@@ -70,3 +70,45 @@ export function chartPoints(trend = []) {
     queueLength: point.queueLength,
   }));
 }
+
+export function formatClock(time) {
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+export function formatDate(time) {
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+export function ticket(number) {
+  return `#${String(number ?? 0).padStart(3, '0')}`;
+}
+
+export function percent(part, total) {
+  if (!total) {
+    return 0;
+  }
+  return Math.round((part / total) * 100);
+}
+
+export function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) {
+    return 'Good morning';
+  }
+  if (hour < 17) {
+    return 'Good afternoon';
+  }
+  return 'Good evening';
+}
+
+export function todayLabel() {
+  return new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+}

@@ -1,23 +1,33 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import { Menu } from 'lucide-react';
 import Sidebar from '../components/common/Sidebar';
-import ManagerNavbar from './ManagerNavbar';
-import './manager.css';
+import Brand from '../components/common/Brand';
 
 function ManagerHome() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="manager-shell">
+    <div className="app-shell">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       {sidebarOpen ? (
         <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
       ) : null}
-      <div className="manager-main">
-        <ManagerNavbar onMenuClick={() => setSidebarOpen((open) => !open)} />
-        <div className="manager-content">
+      <div className="app-main">
+        <header className="mobile-topbar">
+          <Brand />
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Open menu"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={18} />
+          </button>
+        </header>
+        <main className="app-content">
           <Outlet />
-        </div>
+        </main>
       </div>
     </div>
   );

@@ -1,55 +1,56 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Plus, UserPlus } from 'lucide-react';
 import Button from '../components/ui/Button';
+import { useToast } from '../components/ui/Toast';
 import { addToken } from '../services/tokenService';
 import { getErrorMessage } from '../services/api';
-import './queue.css';
+import { ticket } from '../utils/format';
 
 function AddPerson({ queueId, onAdded }) {
+  const toast = useToast();
+  const inputRef = useRef(null);
   const [personName, setPersonName] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setError('');
-    setSuccess('');
-    setLoading(true);
+    const name = personName.trim();
+    if (!name || loading) {
+      return;
+    }
 
+    setLoading(true);
     try {
-      const response = await addToken(queueId, { personName });
+      const { data } = await addToken(queueId, { personName: name });
       setPersonName('');
-      setSuccess(
-        `${response.data.personName} received token #${response.data.tokenNumber}.`
-      );
-      onAdded();
+      toast.success(`Token ${ticket(data.tokenNumber)} issued to ${data.personName}`);
+      await onAdded();
     } catch (err) {
-      setError(getErrorMessage(err, 'Unable to add this person to the queue.'));
+      toast.error(getErrorMessage(err, 'Unable to add this person to the queue.'));
     } finally {
       setLoading(false);
+      inputRef.current?.focus();
     }
   };
 
   return (
-    <form className="add-person" onSubmit={handleSubmit}>
-      <h2>Add a person / generate token</h2>
-      {error ? <div className="alert alert-error">{error}</div> : null}
-      {success ? <div className="alert alert-success">{success}</div> : null}
-      <div className="inline-form">
-        <div className="form-field">
-          <label htmlFor="personName">Person name</label>
-          <input
-            id="personName"
-            value={personName}
-            onChange={(event) => setPersonName(event.target.value)}
-            placeholder="Customer name"
-            required
-          />
-        </div>
-        <Button type="submit" disabled={loading}>
-          {loading ? 'Adding...' : 'Generate token'}
-        </Button>
+    <form className="add-bar" onSubmit={handleSubmit}>
+      <div className="input-icon">
+        <UserPlus size={17} />
+        <input
+          ref={inputRef}
+          className="input"
+          value={personName}
+          onChange={(event) => setPersonName(event.target.value)}
+          placeholder="Enter a name and press Enter"
+          aria-label="Person name"
+          maxLength={80}
+          required
+        />
       </div>
+      <Button type="submit" disabled={loading || !personName.trim()}>
+        <Plus size={16} /> {loading ? 'Adding' : 'Add to queue'}
+      </Button>
     </form>
   );
 }

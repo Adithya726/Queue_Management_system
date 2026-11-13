@@ -1,4 +1,19 @@
-function Modal({ open, title, children, onClose }) {
+import { useEffect } from 'react';
+
+function Modal({ open, title, icon, children, onClose }) {
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) {
     return null;
   }
@@ -12,13 +27,9 @@ function Modal({ open, title, children, onClose }) {
         aria-labelledby="modal-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="ui-modal-header">
-          <h3 id="modal-title">{title}</h3>
-          <button type="button" className="ui-modal-close" onClick={onClose}>
-            ×
-          </button>
-        </div>
-        <div>{children}</div>
+        {icon ? <div className="ui-modal-icon">{icon}</div> : null}
+        <h3 id="modal-title">{title}</h3>
+        {children}
       </div>
     </div>
   );

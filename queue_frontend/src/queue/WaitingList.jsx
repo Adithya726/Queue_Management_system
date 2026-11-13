@@ -1,27 +1,25 @@
 import TokenCard from './TokenCard';
-import './queue.css';
 
-function WaitingList({ tokens, onMoveUp, onMoveDown, onCancel }) {
+function WaitingList({ tokens, averageServiceTime, hasServing, disabled, onMoveUp, onMoveDown, onCancel }) {
   return (
-    <div className="waiting-panel">
-      <div className="waiting-panel-header">
-        <h2>Waiting list</h2>
-        <span>{tokens.length} token{tokens.length === 1 ? '' : 's'}</span>
-      </div>
-      <div className="waiting-list">
-        {tokens.map((token, index) => (
+    <div className="wl">
+      {tokens.map((token, index) => {
+        const ahead = index + (hasServing ? 1 : 0);
+        return (
           <TokenCard
             key={token.id}
             token={token}
             displayPosition={index + 1}
+            estimatedWait={ahead * (averageServiceTime || 0)}
             isFirst={index === 0}
             isLast={index === tokens.length - 1}
+            disabled={disabled}
             onMoveUp={() => onMoveUp(token)}
             onMoveDown={() => onMoveDown(token)}
             onCancel={() => onCancel(token)}
           />
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }

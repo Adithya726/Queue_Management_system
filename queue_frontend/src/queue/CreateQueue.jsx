@@ -1,47 +1,50 @@
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import Button from '../components/ui/Button';
+import { useToast } from '../components/ui/Toast';
 import { createQueue } from '../services/queueService';
 import { getErrorMessage } from '../services/api';
-import './queue.css';
 
 function CreateQueue({ onCreated }) {
+  const toast = useToast();
   const [name, setName] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setError('');
+    const trimmed = name.trim();
+    if (!trimmed || loading) {
+      return;
+    }
     setLoading(true);
-
     try {
-      await createQueue({ name });
+      await createQueue({ name: trimmed });
       setName('');
-      onCreated();
+      toast.success(`Queue "${trimmed}" created`);
+      await onCreated();
     } catch (err) {
-      setError(getErrorMessage(err, 'Unable to create queue.'));
+      toast.error(getErrorMessage(err, 'Unable to create queue.'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form className="create-queue" onSubmit={handleSubmit}>
-      <h2>Create a queue</h2>
-      {error ? <div className="alert alert-error">{error}</div> : null}
-      <div className="inline-form">
+    <form className="card" onSubmit={handleSubmit} style={{ marginBottom: 24 }}>
+      <div className="create-bar">
         <div className="form-field">
-          <label htmlFor="queueName">Queue name</label>
+          <label htmlFor="queueName">New queue</label>
           <input
             id="queueName"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Billing counter"
+            placeholder="e.g. Billing counter, Reception, Consultation"
+            maxLength={60}
             required
           />
         </div>
-        <Button type="submit" disabled={loading}>
-          {loading ? 'Creating...' : 'Create queue'}
+        <Button type="submit" disabled={loading || !name.trim()}>
+          <Plus size={16} /> {loading ? 'Creating' : 'Create queue'}
         </Button>
       </div>
     </form>

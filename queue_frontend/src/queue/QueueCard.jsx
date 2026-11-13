@@ -1,25 +1,38 @@
 import { Link } from 'react-router-dom';
+import { ArrowRight, ListOrdered } from 'lucide-react';
 import Button from '../components/ui/Button';
-import { formatMinutes } from '../utils/format';
-import './queue.css';
+import { formatDate, formatMinutes } from '../utils/format';
 
 function QueueCard({ queue }) {
-  const createdAt = queue.createdAt
-    ? new Date(queue.createdAt).toLocaleString()
-    : 'Just created';
-
   return (
-    <article className="queue-card">
-      <div className="queue-card-top">
-        <h3>{queue.name}</h3>
-        <span className="queue-chip">{queue.waitingCount ?? 0} waiting</span>
+    <article className="queue-tile">
+      <div className="queue-tile-head">
+        <span className="queue-icon">
+          <ListOrdered size={20} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <h3>{queue.name}</h3>
+          <p>Created {formatDate(queue.createdAt) || 'just now'}</p>
+        </div>
       </div>
-      <p className="queue-card-meta">Created {createdAt}</p>
-      {typeof queue.averageWaitTime === 'number' ? (
-        <p className="queue-card-meta">Avg wait {formatMinutes(queue.averageWaitTime)}</p>
-      ) : null}
+      <div className="queue-tile-stats">
+        <div>
+          <strong>{queue.waitingCount ?? 0}</strong>
+          <span>Waiting</span>
+        </div>
+        <div>
+          <strong>{queue.servedCount ?? 0}</strong>
+          <span>Served</span>
+        </div>
+        <div>
+          <strong>{formatMinutes(queue.averageWaitTime)}</strong>
+          <span>Avg wait</span>
+        </div>
+      </div>
       <Link to={`/manager/queues/${queue.id}`}>
-        <Button fullWidth>Open queue</Button>
+        <Button variant="secondary" fullWidth>
+          Open queue <ArrowRight size={16} />
+        </Button>
       </Link>
     </article>
   );

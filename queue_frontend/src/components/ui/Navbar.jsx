@@ -1,4 +1,5 @@
 import { Link, NavLink } from 'react-router-dom';
+import Brand from '../common/Brand';
 import { useAuth } from '../../contextapi/AuthContext';
 
 function Navbar() {
@@ -7,15 +8,17 @@ function Navbar() {
   return (
     <header className="public-nav">
       <div className="container public-nav-inner">
-        <Link to="/" className="brand">
-          QueueFlow
+        <Link to="/">
+          <Brand />
         </Link>
         <nav className="public-links">
-          <NavLink to="/">Home</NavLink>
+          <NavLink to="/" end>
+            Home
+          </NavLink>
           <NavLink to="/about">About</NavLink>
           {isAuthenticated ? (
             <NavLink to="/manager" className="nav-cta">
-              Dashboard
+              Open dashboard
             </NavLink>
           ) : (
             <>

@@ -1,48 +1,50 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import {
+  ArrowRight,
+  ChartColumn,
+  ChevronRight,
+  CircleCheck,
+  Coffee,
+  Play,
+  Timer,
+  Trash2,
+  Users,
+} from 'lucide-react';
+import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
+import { PageSkeleton } from '../components/ui/Skeleton';
+import { useToast } from '../components/ui/Toast';
+import PageHeader from '../components/common/PageHeader';
+import EmptyState from '../components/common/EmptyState';
 import AddPerson from '../queue/AddPerson';
 import WaitingList from '../queue/WaitingList';
-import Button from '../components/ui/Button';
-import Loader from '../components/ui/Loader';
-import Modal from '../components/ui/Modal';
-import EmptyState from '../components/common/EmptyState';
 import { getMyQueues } from '../services/queueService';
 import { getQueueAnalytics } from '../services/analyticsService';
 import {
   cancelToken,
-  clearServingToken,
   completeToken,
   getQueueTokens,
-  getServingTokens,
   moveToken,
-  saveServingToken,
   serveNextToken,
   splitQueueTokens,
 } from '../services/tokenService';
 import { getErrorMessage } from '../services/api';
-import { formatMinutes, startedLabel, waitLabel } from '../utils/format';
-import './manager.css';
-import '../queue/queue.css';
+import { formatMinutes, startedLabel, ticket } from '../utils/format';
 
 function QueueDetails() {
   const { queueId } = useParams();
+  const toast = useToast();
   const [queue, setQueue] = useState(null);
   const [tokens, setTokens] = useState([]);
   const [servingToken, setServingToken] = useState(null);
-  const [averageWaitTime, setAverageWaitTime] = useState(0);
+  const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [confirmToken, setConfirmToken] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [confirmToken, setConfirmToken] = useState(null);
+  const [, setTick] = useState(0);
 
-  const loadQueueData = async (showLoader = true) => {
-    if (showLoader) {
-      setLoading(true);
-    }
-    setError('');
-
+  const loadQueueData = useCallback(async () => {
     try {
       const queuesResponse = await getMyQueues();
       const currentQueue = (queuesResponse.data || []).find(
@@ -51,8 +53,6 @@ function QueueDetails() {
 
       if (!currentQueue) {
         setQueue(null);
-        setTokens([]);
-        setServingToken(null);
         return;
       }
 
@@ -64,109 +64,85 @@ function QueueDetails() {
       const { waiting, serving } = splitQueueTokens(tokensResponse.data || []);
       setQueue(currentQueue);
       setTokens(waiting);
-      setServingToken(serving || getServingTokens()[String(queueId)] || null);
-      setAverageWaitTime(analyticsResponse?.data?.averageWaitTime || 0);
+      setServingToken(serving);
+      setStats(analyticsResponse?.data || {});
     } catch (err) {
-      setError(getErrorMessage(err, 'Unable to load this queue.'));
+      toast.error(getErrorMessage(err, 'Unable to load this queue.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [queueId, toast]);
 
   useEffect(() => {
-    loadQueueData(true);
-  }, [queueId]);
+    setLoading(true);
+    loadQueueData();
+  }, [loadQueueData]);
 
+  // Re-render every 15s so "waiting X min" / "serving for X min" labels stay fresh.
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30000);
+    const timer = setInterval(() => setTick((value) => value + 1), 15000);
     return () => clearInterval(timer);
   }, []);
 
-  const handleMove = async (tokenId, direction) => {
-    setError('');
-    setSuccess('');
-    try {
-      await moveToken(tokenId, direction);
-      await loadQueueData(false);
-    } catch (err) {
-      setError(getErrorMessage(err, 'Unable to move this token.'));
-    }
-  };
-
-  const handleServeNext = async () => {
-    if (tokens.length === 0 || busy) {
+  const runAction = async (action, successMessage, fallbackError) => {
+    if (busy) {
       return;
     }
-
     setBusy(true);
-    setError('');
-    setSuccess('');
-
     try {
-      const response = await serveNextToken(queueId);
-      saveServingToken(queueId, response.data);
-      setServingToken(response.data);
-      setSuccess(`Now serving token #${response.data.tokenNumber}.`);
-      await loadQueueData(false);
+      const result = await action();
+      const message =
+        typeof successMessage === 'function' ? successMessage(result) : successMessage;
+      if (message) {
+        toast.success(message);
+      }
+      await loadQueueData();
     } catch (err) {
-      setError(getErrorMessage(err, 'Unable to assign the next token for service.'));
+      toast.error(getErrorMessage(err, fallbackError));
     } finally {
       setBusy(false);
     }
   };
 
-  const handleComplete = async () => {
-    if (!servingToken) {
-      return;
-    }
+  const handleServeNext = () =>
+    runAction(
+      () => serveNextToken(queueId),
+      (res) => `Now serving ${ticket(res.data.tokenNumber)} · ${res.data.personName}`,
+      'Unable to assign the next token for service.'
+    );
 
-    setBusy(true);
-    setError('');
-    setSuccess('');
+  const handleComplete = () =>
+    runAction(
+      () => completeToken(servingToken.id),
+      `${ticket(servingToken.tokenNumber)} · ${servingToken.personName} has been served`,
+      'Unable to complete this token.'
+    );
 
-    try {
-      await completeToken(servingToken.id);
-      clearServingToken(queueId);
-      setServingToken(null);
-      setSuccess(`Token #${servingToken.tokenNumber} finished service.`);
-      await loadQueueData(false);
-    } catch (err) {
-      setError(getErrorMessage(err, 'Unable to complete this token.'));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const handleMove = (token, direction) =>
+    runAction(() => moveToken(token.id, direction), null, 'Unable to move this token.');
 
   const handleCancel = async () => {
-    if (!confirmToken) {
-      return;
-    }
-
-    setBusy(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      await cancelToken(confirmToken.id);
-      setSuccess(`Token #${confirmToken.tokenNumber} was cancelled.`);
-      setConfirmToken(null);
-      await loadQueueData(false);
-    } catch (err) {
-      setError(getErrorMessage(err, 'Unable to cancel this token.'));
-    } finally {
-      setBusy(false);
-    }
+    const token = confirmToken;
+    setConfirmToken(null);
+    await runAction(
+      () => cancelToken(token.id),
+      `${ticket(token.tokenNumber)} · ${token.personName} was cancelled`,
+      'Unable to cancel this token.'
+    );
   };
 
+  const closeModal = useCallback(() => setConfirmToken(null), []);
+
   if (loading) {
-    return <Loader label="Loading queue details..." />;
+    return <PageSkeleton />;
   }
 
   if (!queue) {
     return (
       <EmptyState
+        big
         title="Queue not found"
-        message="This queue does not belong to the logged-in manager."
+        message="This queue does not exist or belongs to another manager."
         action={
           <Link to="/manager/queues">
             <Button variant="secondary">Back to queues</Button>
@@ -180,109 +156,154 @@ function QueueDetails() {
 
   return (
     <section>
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Queue</p>
-          <h1 className="page-title">{queue.name}</h1>
-          <p className="page-subtitle">
-            {tokens.length} waiting · avg wait {formatMinutes(averageWaitTime)}
-          </p>
-        </div>
-        <div className="queue-toolbar">
-          <Link to="/manager/queues">
-            <Button variant="ghost">All queues</Button>
-          </Link>
+      <PageHeader
+        breadcrumb={
+          <>
+            <Link to="/manager/queues">Queues</Link>
+            <ChevronRight size={14} />
+            <span>{queue.name}</span>
+          </>
+        }
+        title={queue.name}
+        actions={
           <Link to={`/manager/analytics/${queueId}`}>
-            <Button variant="secondary">Analytics</Button>
+            <Button variant="secondary">
+              <ChartColumn size={16} /> Analytics
+            </Button>
           </Link>
-        </div>
-      </div>
-      {error ? <div className="alert alert-error">{error}</div> : null}
-      {success ? <div className="alert alert-success">{success}</div> : null}
+        }
+      />
 
-      <div className="queue-ops-grid">
-        <article className={`serving-card ${servingToken ? 'is-active' : ''}`}>
-          <span>Now serving</span>
+      <div className="stat-strip" style={{ marginBottom: 22 }}>
+        <span className="strip-item">
+          <i className="dot" style={{ background: 'var(--waiting)' }} />
+          Waiting <strong>{tokens.length}</strong>
+        </span>
+        <span className="strip-item">
+          <i className="dot" style={{ background: 'var(--served)' }} />
+          Served <strong>{stats.totalServed ?? 0}</strong>
+        </span>
+        <span className="strip-item">
+          <i className="dot" style={{ background: 'var(--cancelled)' }} />
+          Cancelled <strong>{stats.totalCancelled ?? 0}</strong>
+        </span>
+        <span className="strip-item">
+          <i className="dot" style={{ background: 'var(--primary)' }} />
+          Avg wait <strong>{formatMinutes(stats.averageWaitTime)}</strong>
+        </span>
+        <span className="strip-item">
+          <i className="dot" style={{ background: 'var(--serving)' }} />
+          Avg service <strong>{formatMinutes(stats.averageServiceTime)}</strong>
+        </span>
+      </div>
+
+      <div className="ops-grid">
+        <aside className={`serving-panel ${servingToken ? 'is-active' : ''}`}>
+          <div className="serving-head">
+            <span>Now serving</span>
+            {servingToken ? (
+              <span className="badge badge-serving" style={{ opacity: 1, letterSpacing: 0 }}>
+                At counter
+              </span>
+            ) : (
+              <span className="badge badge-idle" style={{ opacity: 1, letterSpacing: 0 }}>
+                Counter free
+              </span>
+            )}
+          </div>
+
           {servingToken ? (
             <>
-              <strong>
-                #{servingToken.tokenNumber} · {servingToken.personName}
-              </strong>
-              <p>{startedLabel(servingToken.servingStartedAt)}</p>
-              <Button variant="success" onClick={handleComplete} disabled={busy}>
-                {busy ? 'Please wait...' : 'Complete service'}
+              <div className="serving-ticket">
+                <span className="ticket-no">{ticket(servingToken.tokenNumber)}</span>
+                <span className="person">{servingToken.personName}</span>
+              </div>
+              <div className="serving-timer">
+                <Timer size={16} /> {startedLabel(servingToken.servingStartedAt)}
+              </div>
+              <Button variant="success" size="lg" fullWidth onClick={handleComplete} disabled={busy}>
+                <CircleCheck size={18} /> Complete service
               </Button>
             </>
           ) : (
             <>
-              <strong>No token at the counter</strong>
-              <p>Assign the person at the top of the waiting list with one click.</p>
-              <Button onClick={handleServeNext} disabled={tokens.length === 0 || busy}>
-                Serve next token
+              <div className="serving-ticket idle-ticket">
+                <Coffee size={44} />
+                <strong>No one at the counter</strong>
+              </div>
+              <Button
+                size="lg"
+                fullWidth
+                onClick={handleServeNext}
+                disabled={!nextToken || busy}
+              >
+                <Play size={18} />
+                {nextToken ? `Serve next · ${ticket(nextToken.tokenNumber)}` : 'Queue is empty'}
               </Button>
             </>
           )}
-        </article>
 
-        <article className="next-card">
-          <span>Next in line</span>
           {nextToken ? (
-            <>
-              <strong>
-                #{nextToken.tokenNumber} · {nextToken.personName}
-              </strong>
+            <div className="next-up">
+              <ArrowRight size={16} />
+              <span>
+                Up next: <strong>{ticket(nextToken.tokenNumber)} · {nextToken.personName}</strong>
+              </span>
+            </div>
+          ) : null}
+        </aside>
+
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h2>Waiting list</h2>
               <p>
-                {waitLabel(nextToken.createdAt)} · position 1
+                {tokens.length} {tokens.length === 1 ? 'person' : 'people'} in line · served in
+                this order
               </p>
-              {servingToken ? (
-                <p className="hint">Complete the current token, then serve this person.</p>
-              ) : (
-                <Button onClick={handleServeNext} disabled={busy}>
-                  Assign for service
-                </Button>
-              )}
-            </>
-          ) : (
-            <>
-              <strong>Waiting list is empty</strong>
-              <p>Add a person to generate a token.</p>
-            </>
-          )}
-        </article>
+            </div>
+          </div>
+
+          <AddPerson queueId={queueId} onAdded={loadQueueData} />
+
+          <div style={{ marginTop: 16 }}>
+            {tokens.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No one is waiting"
+                message="Add a person above to issue the next token."
+              />
+            ) : (
+              <WaitingList
+                tokens={tokens}
+                averageServiceTime={stats.averageServiceTime}
+                hasServing={Boolean(servingToken)}
+                disabled={busy}
+                onMoveUp={(token) => handleMove(token, 'UP')}
+                onMoveDown={(token) => handleMove(token, 'DOWN')}
+                onCancel={(token) => setConfirmToken(token)}
+              />
+            )}
+          </div>
+        </section>
       </div>
-
-      <AddPerson queueId={queueId} onAdded={() => loadQueueData(false)} />
-
-      {tokens.length === 0 ? (
-        <EmptyState
-          title="No waiting customers"
-          message="Add a person to generate the next token number."
-        />
-      ) : (
-        <WaitingList
-          key={now}
-          tokens={tokens}
-          onMoveUp={(token) => handleMove(token.id, 'UP')}
-          onMoveDown={(token) => handleMove(token.id, 'DOWN')}
-          onCancel={(token) => setConfirmToken(token)}
-        />
-      )}
 
       <Modal
         open={Boolean(confirmToken)}
-        title="Cancel token"
-        onClose={() => setConfirmToken(null)}
+        title="Cancel this token?"
+        icon={<Trash2 size={22} />}
+        onClose={closeModal}
       >
         <p>
-          Cancel token #{confirmToken?.tokenNumber} for {confirmToken?.personName}? They
-          will be removed from this queue.
+          {ticket(confirmToken?.tokenNumber)} · {confirmToken?.personName} will be removed from
+          the queue. This can't be undone.
         </p>
         <div className="modal-actions">
-          <Button variant="ghost" onClick={() => setConfirmToken(null)}>
+          <Button variant="secondary" onClick={closeModal}>
             Keep token
           </Button>
           <Button variant="danger" onClick={handleCancel} disabled={busy}>
-            {busy ? 'Cancelling...' : 'Cancel token'}
+            Cancel token
           </Button>
         </div>
       </Modal>

@@ -1,9 +1,8 @@
 import QueueCard from './QueueCard';
-import './queue.css';
 
 function QueueList({ queues }) {
   return (
-    <div className="queue-list">
+    <div className="queue-grid">
       {queues.map((queue) => (
         <QueueCard key={queue.id} queue={queue} />
       ))}

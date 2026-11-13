@@ -1,259 +1,341 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  ArrowRight,
+  CircleCheck,
+  Clock,
+  Flame,
+  Hourglass,
+  Layers,
+  Play,
+  Plus,
+  RefreshCw,
+  UserCheck,
+  Users,
+} from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import Button from '../components/ui/Button';
-import Loader from '../components/ui/Loader';
+import StatCard from '../components/ui/StatCard';
+import { PageSkeleton } from '../components/ui/Skeleton';
+import PageHeader from '../components/common/PageHeader';
+import ChartCard from '../components/common/ChartCard';
 import EmptyState from '../components/common/EmptyState';
-import QueueTrendChart from '../analytics/QueueTrendChart';
-import { getMyQueues } from '../services/queueService';
-import { getQueueAnalytics } from '../services/analyticsService';
+import { useToast } from '../components/ui/Toast';
+import { useAuth } from '../contextapi/AuthContext';
+import { loadQueueOverview } from '../services/overviewService';
+import { serveNextToken } from '../services/tokenService';
 import { getErrorMessage } from '../services/api';
-import { formatMinutes } from '../utils/format';
-import './manager.css';
+import { formatMinutes, greeting, ticket, todayLabel } from '../utils/format';
+
+const REFRESH_MS = 30000;
 
 function Dashboard() {
+  const { auth } = useAuth();
+  const toast = useToast();
   const [queues, setQueues] = useState([]);
-  const [analyticsByQueue, setAnalyticsByQueue] = useState({});
-  const [selectedQueueId, setSelectedQueueId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busyQueueId, setBusyQueueId] = useState(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const loadDashboard = async () => {
-      setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (silent) {
+      setRefreshing(true);
+    }
+    try {
+      setQueues(await loadQueueOverview());
       setError('');
-
-      try {
-        const queuesResponse = await getMyQueues();
-        const list = queuesResponse.data || [];
-        setQueues(list);
-
-        const entries = await Promise.all(
-          list.map(async (queue) => {
-            try {
-              const response = await getQueueAnalytics(queue.id);
-              return [String(queue.id), response.data];
-            } catch {
-              return [String(queue.id), null];
-            }
-          })
-        );
-
-        const nextAnalytics = Object.fromEntries(entries);
-        setAnalyticsByQueue(nextAnalytics);
-
-        setSelectedQueueId((current) => {
-          if (current && nextAnalytics[current]) {
-            return current;
-          }
-          return list[0] ? String(list[0].id) : '';
-        });
-      } catch (err) {
-        setError(getErrorMessage(err, 'Unable to load dashboard data.'));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadDashboard();
+    } catch (err) {
+      setError(getErrorMessage(err, 'Unable to load dashboard data.'));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
+  useEffect(() => {
+    load();
+    const timer = setInterval(() => load(true), REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  const handleServe = async (queue) => {
+    setBusyQueueId(queue.id);
+    try {
+      const { data } = await serveNextToken(queue.id);
+      toast.success(`Now serving ${ticket(data.tokenNumber)} · ${data.personName}`);
+      await load(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Unable to serve the next token.'));
+    } finally {
+      setBusyQueueId(null);
+    }
+  };
+
   const totals = useMemo(() => {
-    const values = Object.values(analyticsByQueue).filter(Boolean);
-    const waitingCustomers = values.reduce(
-      (sum, item) => sum + (item.currentQueueLength || 0),
-      0
-    );
-    const completedTokens = values.reduce(
-      (sum, item) => sum + (item.totalServed || 0),
-      0
-    );
-    const cancelledTokens = values.reduce(
-      (sum, item) => sum + (item.totalCancelled || 0),
-      0
-    );
-    const waitSamples = values.filter((item) => Number(item.averageWaitTime) > 0);
-    const serviceSamples = values.filter(
-      (item) => Number(item.averageServiceTime) > 0
-    );
+    const waiting = queues.reduce((sum, q) => sum + q.waitingCount, 0);
+    const serving = queues.filter((q) => q.serving).length;
+    const served = queues.reduce((sum, q) => sum + q.servedCount, 0);
+    const withWait = queues.filter((q) => q.averageWaitTime > 0);
+    const avgWait = withWait.length
+      ? withWait.reduce((sum, q) => sum + q.averageWaitTime, 0) / withWait.length
+      : 0;
+    return { waiting, serving, served, avgWait };
+  }, [queues]);
 
-    return {
-      totalQueues: queues.length,
-      waitingCustomers,
-      completedTokens,
-      cancelledTokens,
-      averageWaitTime:
-        waitSamples.length === 0
-          ? 0
-          : waitSamples.reduce((sum, item) => sum + item.averageWaitTime, 0) /
-            waitSamples.length,
-      averageServiceTime:
-        serviceSamples.length === 0
-          ? 0
-          : serviceSamples.reduce((sum, item) => sum + item.averageServiceTime, 0) /
-            serviceSamples.length,
-    };
-  }, [analyticsByQueue, queues.length]);
+  const busiest = useMemo(
+    () =>
+      queues.reduce(
+        (top, q) => (!top || q.waitingCount > top.waitingCount ? q : top),
+        null
+      ),
+    [queues]
+  );
 
-  const selectedAnalytics = analyticsByQueue[selectedQueueId];
-  const selectedQueue = queues.find((queue) => String(queue.id) === selectedQueueId);
+  const chartData = useMemo(
+    () =>
+      queues.map((q) => ({
+        name: q.name.length > 14 ? `${q.name.slice(0, 13)}…` : q.name,
+        Waiting: q.waitingCount,
+        Served: q.servedCount,
+      })),
+    [queues]
+  );
 
   if (loading) {
-    return <Loader label="Loading dashboard..." />;
+    return <PageSkeleton />;
   }
+
+  const today = todayLabel();
 
   return (
     <section>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">
-            Wait times, queue length, and service activity across every queue you manage.
-          </p>
-        </div>
-        <Link to="/manager/queues">
-          <Button>Create or open a queue</Button>
-        </Link>
-      </div>
-      {error ? <div className="alert alert-error">{error}</div> : null}
+      <PageHeader
+        title={`${greeting()}, ${(auth?.name || 'Manager').split(' ')[0]}`}
+        subtitle={
+          <>
+            {today} · <span className="live-dot">Live, refreshes every 30s</span>
+          </>
+        }
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => load(true)} disabled={refreshing}>
+              <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
+              {refreshing ? 'Refreshing' : 'Refresh'}
+            </Button>
+            <Link to="/manager/queues">
+              <Button>
+                <Plus size={16} /> New queue
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
-      <div className="stats-grid">
-        <article className="stat-card accent-indigo">
-          <span>Queues</span>
-          <strong>{totals.totalQueues}</strong>
-        </article>
-        <article className="stat-card accent-sky">
-          <span>People waiting</span>
-          <strong>{totals.waitingCustomers}</strong>
-        </article>
-        <article className="stat-card accent-amber">
-          <span>Average wait</span>
-          <strong>{formatMinutes(totals.averageWaitTime)}</strong>
-        </article>
-        <article className="stat-card accent-teal">
-          <span>Average service</span>
-          <strong>{formatMinutes(totals.averageServiceTime)}</strong>
-        </article>
-        <article className="stat-card">
-          <span>Served tokens</span>
-          <strong>{totals.completedTokens}</strong>
-        </article>
-        <article className="stat-card">
-          <span>Cancelled tokens</span>
-          <strong>{totals.cancelledTokens}</strong>
-        </article>
-      </div>
+      {error ? <div className="alert alert-error" style={{ marginBottom: 20 }}>{error}</div> : null}
 
       {queues.length === 0 ? (
         <EmptyState
-          title="No queues yet"
-          message="Create a named queue, add people, and this dashboard will show wait-time and length trends."
+          big
+          icon={Layers}
+          title="Create your first queue"
+          message="Queues are your counters: billing, reception, consultation. Create one, add people, and this dashboard comes alive."
           action={
             <Link to="/manager/queues">
-              <Button>Create a queue</Button>
+              <Button size="lg">
+                <Plus size={18} /> Create a queue
+              </Button>
             </Link>
           }
         />
       ) : (
         <>
-          <div className="dashboard-grid">
-            <article className="chart-card">
-              <div className="chart-card-header">
-                <div>
-                  <h2>Queue length trend</h2>
-                  <p>How many people were waiting as tokens were added.</p>
-                </div>
-                <div className="form-field compact-field">
-                  <label htmlFor="dashboardQueue">Queue</label>
-                  <select
-                    id="dashboardQueue"
-                    value={selectedQueueId}
-                    onChange={(event) => setSelectedQueueId(event.target.value)}
-                  >
-                    {queues.map((queue) => (
-                      <option key={queue.id} value={queue.id}>
-                        {queue.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              {selectedAnalytics ? (
-                <QueueTrendChart trend={selectedAnalytics.queueLengthTrend} />
-              ) : (
-                <EmptyState
-                  title="Analytics unavailable"
-                  message="This queue did not return trend data."
-                />
-              )}
-            </article>
+          <div className="stats-grid">
+            <StatCard
+              label="People waiting now"
+              value={totals.waiting}
+              hint={`across ${queues.length} queue${queues.length === 1 ? '' : 's'}`}
+              icon={Users}
+              tone="waiting"
+            />
+            <StatCard
+              label="Being served"
+              value={totals.serving}
+              hint={`${queues.length - totals.serving} counter${queues.length - totals.serving === 1 ? '' : 's'} free`}
+              icon={UserCheck}
+              tone="serving"
+            />
+            <StatCard
+              label="Served so far"
+              value={totals.served}
+              hint="completed tokens"
+              icon={CircleCheck}
+              tone="served"
+            />
+            <StatCard
+              label="Average wait"
+              value={formatMinutes(totals.avgWait)}
+              hint="join to counter"
+              icon={Clock}
+              tone="primary"
+            />
+          </div>
 
-            <article className="queue-summary-card">
-              <h2>{selectedQueue?.name || 'Queue'}</h2>
-              <ul>
-                <li>
-                  <span>Current length</span>
-                  <strong>{selectedAnalytics?.currentQueueLength ?? 0}</strong>
-                </li>
-                <li>
-                  <span>Average wait</span>
-                  <strong>{formatMinutes(selectedAnalytics?.averageWaitTime)}</strong>
-                </li>
-                <li>
-                  <span>Longest wait</span>
-                  <strong>{formatMinutes(selectedAnalytics?.maxWaitTime)}</strong>
-                </li>
-                <li>
-                  <span>Average service</span>
-                  <strong>{formatMinutes(selectedAnalytics?.averageServiceTime)}</strong>
-                </li>
-              </ul>
-              {selectedQueueId ? (
-                <div className="dashboard-actions">
-                  <Link to={`/manager/queues/${selectedQueueId}`}>
-                    <Button fullWidth>Open waiting list</Button>
-                  </Link>
-                  <Link to={`/manager/analytics/${selectedQueueId}`}>
-                    <Button variant="secondary" fullWidth>
-                      Full analytics
+          <div className="dash-grid">
+            <div>
+              <div className="section-title">
+                <h2>Live queues</h2>
+                <Link to="/manager/queues" className="breadcrumb">
+                  Manage all <ArrowRight size={14} />
+                </Link>
+              </div>
+              <div className="live-grid">
+                {queues.map((queue) => (
+                  <article key={queue.id} className="live-card">
+                    <div className="live-card-top">
+                      <h3>{queue.name}</h3>
+                      {queue.serving ? (
+                        <span className="badge badge-serving">Serving</span>
+                      ) : queue.waitingCount > 5 ? (
+                        <span className="badge badge-busy">Busy</span>
+                      ) : (
+                        <span className="badge badge-idle">Counter free</span>
+                      )}
+                    </div>
+                    <div className="live-counts">
+                      <div>
+                        <strong>{queue.waitingCount}</strong>
+                        <span>Waiting</span>
+                      </div>
+                      <div>
+                        <strong>{queue.servedCount}</strong>
+                        <span>Served</span>
+                      </div>
+                      <div>
+                        <strong>{formatMinutes(queue.averageWaitTime)}</strong>
+                        <span>Avg wait</span>
+                      </div>
+                    </div>
+                    <div className="live-rows">
+                      <div className="live-row">
+                        <span>Now serving</span>
+                        <strong>
+                          {queue.serving
+                            ? `${ticket(queue.serving.tokenNumber)} · ${queue.serving.personName}`
+                            : 'Nobody'}
+                        </strong>
+                      </div>
+                      <div className="live-row">
+                        <span>Next in line</span>
+                        <strong>
+                          {queue.next
+                            ? `${ticket(queue.next.tokenNumber)} · ${queue.next.personName}`
+                            : 'Empty'}
+                        </strong>
+                      </div>
+                    </div>
+                    <div className="live-actions">
+                      <Link to={`/manager/queues/${queue.id}`}>
+                        <Button variant="secondary" fullWidth>
+                          Open
+                        </Button>
+                      </Link>
+                      <Button
+                        onClick={() => handleServe(queue)}
+                        disabled={!queue.next || Boolean(queue.serving) || busyQueueId === queue.id}
+                        title={queue.serving ? 'Complete the current token first' : undefined}
+                      >
+                        <Play size={15} /> Serve next
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="side-stack">
+              {busiest ? (
+                <div className="spotlight">
+                  <span className="spotlight-label">
+                    <Flame size={16} /> Busiest queue
+                  </span>
+                  <h3>{busiest.name}</h3>
+                  <div className="spotlight-stats">
+                    <div>
+                      <strong>{busiest.waitingCount}</strong>
+                      <span>waiting</span>
+                    </div>
+                    <div>
+                      <strong>{formatMinutes(busiest.averageServiceTime)}</strong>
+                      <span>per person</span>
+                    </div>
+                  </div>
+                  <Link to={`/manager/queues/${busiest.id}`}>
+                    <Button fullWidth>
+                      Go to counter <ArrowRight size={16} />
                     </Button>
                   </Link>
                 </div>
               ) : null}
-            </article>
-          </div>
 
-          <div className="table-card">
-            <h2>All queues</h2>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Waiting</th>
-                    <th>Avg wait</th>
-                    <th>Served</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <h2>Load by queue</h2>
+                    <p>People waiting right now</p>
+                  </div>
+                  <Hourglass size={18} color="#94a3b8" />
+                </div>
+                <div className="mini-list">
                   {queues.map((queue) => {
-                    const analytics = analyticsByQueue[String(queue.id)];
+                    const max = Math.max(1, ...queues.map((q) => q.waitingCount));
                     return (
-                      <tr key={queue.id}>
-                        <td>{queue.name}</td>
-                        <td>{analytics?.currentQueueLength ?? 0}</td>
-                        <td>{formatMinutes(analytics?.averageWaitTime)}</td>
-                        <td>{analytics?.totalServed ?? 0}</td>
-                        <td>
-                          <Link to={`/manager/queues/${queue.id}`}>Open</Link>
-                        </td>
-                      </tr>
+                      <div key={queue.id} className="mini-item">
+                        <span className="mini-item-name">{queue.name}</span>
+                        <div className="mini-item-bar">
+                          <span style={{ width: `${(queue.waitingCount / max) * 100}%` }} />
+                        </div>
+                        <span className="mini-item-val">{queue.waitingCount}</span>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </section>
             </div>
           </div>
+
+          <ChartCard
+            title="Waiting vs served"
+            subtitle="Today's workload for every queue"
+            action={
+              <Link to="/manager/analytics">
+                <Button variant="ghost" size="sm">
+                  Full analytics <ArrowRight size={14} />
+                </Button>
+              </Link>
+            }
+          >
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={chartData} barGap={6}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <Tooltip cursor={{ fill: '#f5f7fb' }} contentStyle={{ borderRadius: 10, border: '1px solid #e6e9f0' }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 13 }} />
+                <Bar dataKey="Waiting" fill="#f59e0b" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="Served" fill="#10b981" radius={[6, 6, 0, 0]} maxBarSize={36} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
         </>
       )}
     </section>

@@ -1,68 +1,82 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Layers, Search } from 'lucide-react';
 import CreateQueue from '../queue/CreateQueue';
 import QueueList from '../queue/QueueList';
-import Loader from '../components/ui/Loader';
+import { PageSkeleton } from '../components/ui/Skeleton';
+import PageHeader from '../components/common/PageHeader';
 import EmptyState from '../components/common/EmptyState';
-import { getMyQueues } from '../services/queueService';
-import { getQueueAnalytics } from '../services/analyticsService';
+import { loadQueueOverview } from '../services/overviewService';
 import { getErrorMessage } from '../services/api';
-import './manager.css';
 
 function ManageQueues() {
   const [queues, setQueues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
 
-  const loadQueues = async () => {
-    setLoading(true);
-    setError('');
-
+  const loadQueues = useCallback(async () => {
     try {
-      const response = await getMyQueues();
-      const list = response.data || [];
-      const withCounts = await Promise.all(
-        list.map(async (queue) => {
-          try {
-            const analytics = await getQueueAnalytics(queue.id);
-            return {
-              ...queue,
-              waitingCount: analytics.data?.currentQueueLength ?? 0,
-              averageWaitTime: analytics.data?.averageWaitTime ?? 0,
-            };
-          } catch {
-            return { ...queue, waitingCount: 0, averageWaitTime: 0 };
-          }
-        })
-      );
-      setQueues(withCounts);
+      setQueues(await loadQueueOverview());
+      setError('');
     } catch (err) {
       setError(getErrorMessage(err, 'Unable to load queues.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadQueues();
-  }, []);
+  }, [loadQueues]);
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return term ? queues.filter((q) => q.name.toLowerCase().includes(term)) : queues;
+  }, [queues, search]);
 
   return (
     <section>
-      <h1 className="page-title">Manage queues</h1>
-      <p className="page-subtitle">
-        Each queue needs a name. Open one to add people, move tokens, serve the top of the list, or cancel a token.
-      </p>
-      {error ? <div className="alert alert-error">{error}</div> : null}
+      <PageHeader
+        title="Queues"
+        subtitle="Create a queue for each counter, then open it to add people and serve them."
+      />
+      {error ? <div className="alert alert-error" style={{ marginBottom: 20 }}>{error}</div> : null}
       <CreateQueue onCreated={loadQueues} />
+
       {loading ? (
-        <Loader label="Loading queues..." />
+        <PageSkeleton />
       ) : queues.length === 0 ? (
         <EmptyState
+          big
+          icon={Layers}
           title="No queues yet"
-          message="Create your first named queue to start issuing tokens."
+          message="Name your first queue above, for example Billing or Reception, to start issuing tokens."
         />
       ) : (
-        <QueueList queues={queues} />
+        <>
+          <div className="toolbar">
+            <div className="section-title" style={{ margin: 0 }}>
+              <h2>
+                Your queues <span className="stat-hint">({queues.length})</span>
+              </h2>
+            </div>
+            <div className="input-icon">
+              <Search size={16} />
+              <input
+                className="input"
+                placeholder="Search queues"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search queues"
+              />
+            </div>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState icon={Search} title="No matching queues" message={`Nothing matches "${search}".`} />
+          ) : (
+            <QueueList queues={filtered} />
+          )}
+        </>
       )}
     </section>
   );
