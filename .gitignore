@@ -1,0 +1,29 @@
+
+# Eclipse workspace
+.metadata/
+.settings/
+.classpath
+.project
+
+# Spring Boot
+Queue_backend/target/
+*.class
+*.log
+
+# React
+queue_frontend/node_modules/
+queue_frontend/dist/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+application-local.properties
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
