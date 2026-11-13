@@ -42,7 +42,7 @@ cd Queue_backend
 export JWT_SECRET=any-long-random-string-at-least-32-characters
 ./mvnw spring-boot:run
 ```
-Create the database once in MySQL: `CREATE DATABASE queue_db;`
+The `queue_db` database and its tables are created automatically on first run.
 
 ### Frontend
 ```bash
