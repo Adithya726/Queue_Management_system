@@ -10,6 +10,11 @@ public interface TokenRepository extends JpaRepository<Token, Long> {
 
     List<Token> findByQueueIdAndStatusOrderByPositionAsc(
             Long queueId, TokenStatus status);
+    
+
+List<Token> findByQueueIdAndStatusInOrderByPositionAsc(
+        Long queueId, List<TokenStatus> statuses);
+
 
     Optional<Token> findFirstByQueueIdAndStatusOrderByPositionAsc(
             Long queueId, TokenStatus status);

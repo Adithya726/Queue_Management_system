@@ -1,3 +1,4 @@
+
 package com.que.service;
 
 import java.util.List;
@@ -7,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.que.dto.*;
+import com.que.exception.ResourceNotFoundException;
 import com.que.model.Manager;
 import com.que.model.Queue;
 import com.que.repository.ManagerRepository;
@@ -28,7 +30,7 @@ public class QueueServiceImpl implements QueueService {
 
         return managerRepository.findByEmail(email)
                 .orElseThrow(() ->
-                        new RuntimeException("Manager not found"));
+                        new ResourceNotFoundException("Manager not found"));
     }
 
     @Override

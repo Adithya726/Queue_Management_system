@@ -1,3 +1,4 @@
+
 package com.que.service;
 
 import java.time.LocalDateTime;
@@ -9,6 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.que.dto.TokenRequest;
 import com.que.dto.TokenResponse;
+import com.que.exception.BadRequestException;
+import com.que.exception.ResourceNotFoundException;
 import com.que.model.*;
 import com.que.repository.*;
 
@@ -23,36 +26,31 @@ public class TokenServiceImpl implements TokenService {
     private final ManagerRepository managerRepository;
 
     private Manager getCurrentManager() {
-
         String email = SecurityContextHolder.getContext()
                 .getAuthentication().getName();
 
         return managerRepository.findByEmail(email)
                 .orElseThrow(() ->
-                        new RuntimeException("Manager not found"));
+                        new ResourceNotFoundException("Manager not found"));
     }
 
     private Queue getOwnedQueue(Long queueId) {
-
         return queueRepository.findByIdAndManagerId(
                 queueId, getCurrentManager().getId())
                 .orElseThrow(() ->
-                        new RuntimeException("Queue not found"));
+                        new ResourceNotFoundException("Queue not found"));
     }
 
     private Token getOwnedToken(Long tokenId) {
-
         Token token = tokenRepository.findById(tokenId)
                 .orElseThrow(() ->
-                        new RuntimeException("Token not found"));
+                        new ResourceNotFoundException("Token not found"));
 
         getOwnedQueue(token.getQueue().getId());
-
         return token;
     }
 
     private TokenResponse convertToResponse(Token token) {
-
         return new TokenResponse(
                 token.getId(),
                 token.getTokenNumber(),
@@ -68,7 +66,6 @@ public class TokenServiceImpl implements TokenService {
     @Override
     @Transactional
     public TokenResponse addToken(Long queueId, TokenRequest request) {
-
         Queue queue = getOwnedQueue(queueId);
 
         List<Token> waiting = tokenRepository
@@ -78,24 +75,28 @@ public class TokenServiceImpl implements TokenService {
         long nextNumber = tokenRepository.countByQueueId(queueId) + 1L;
 
         Token token = new Token();
-
         token.setTokenNumber((int) nextNumber);
         token.setPersonName(request.getPersonName().trim());
         token.setQueue(queue);
         token.setStatus(TokenStatus.WAITING);
-        token.setPosition(waiting.size() + 1);
+
+        int nextPosition = waiting.isEmpty()
+                ? 1
+                : waiting.get(waiting.size() - 1).getPosition() + 1;
+
+        token.setPosition(nextPosition);
 
         return convertToResponse(tokenRepository.save(token));
     }
 
     @Override
     public List<TokenResponse> getTokens(Long queueId) {
-
         getOwnedQueue(queueId);
 
         return tokenRepository
-                .findByQueueIdAndStatusOrderByPositionAsc(
-                        queueId, TokenStatus.WAITING)
+                .findByQueueIdAndStatusInOrderByPositionAsc(
+                        queueId,
+                        List.of(TokenStatus.WAITING, TokenStatus.SERVING))
                 .stream()
                 .map(this::convertToResponse)
                 .toList();
@@ -104,11 +105,11 @@ public class TokenServiceImpl implements TokenService {
     @Override
     @Transactional
     public TokenResponse moveToken(Long tokenId, String direction) {
-
         Token token = getOwnedToken(tokenId);
 
         if (token.getStatus() != TokenStatus.WAITING) {
-            throw new RuntimeException("Only waiting tokens can be moved");
+            throw new BadRequestException(
+                    "Only waiting tokens can be moved");
         }
 
         List<Token> tokens = tokenRepository
@@ -116,7 +117,6 @@ public class TokenServiceImpl implements TokenService {
                         token.getQueue().getId(), TokenStatus.WAITING);
 
         int index = tokens.indexOf(token);
-
         int targetIndex;
 
         if ("UP".equalsIgnoreCase(direction)) {
@@ -124,17 +124,17 @@ public class TokenServiceImpl implements TokenService {
         } else if ("DOWN".equalsIgnoreCase(direction)) {
             targetIndex = index + 1;
         } else {
-            throw new RuntimeException("Invalid direction");
+            throw new BadRequestException("Invalid direction");
         }
 
         if (targetIndex < 0 || targetIndex >= tokens.size()) {
-            throw new RuntimeException("Cannot move token further");
+            throw new BadRequestException(
+                    "Cannot move token further");
         }
 
         Token other = tokens.get(targetIndex);
 
         int oldPosition = token.getPosition();
-
         token.setPosition(other.getPosition());
         other.setPosition(oldPosition);
 
@@ -147,49 +147,51 @@ public class TokenServiceImpl implements TokenService {
     @Override
     @Transactional
     public TokenResponse serveNext(Long queueId) {
-
         getOwnedQueue(queueId);
+
+        if (tokenRepository.countByQueueIdAndStatus(
+                queueId, TokenStatus.SERVING) > 0) {
+            throw new BadRequestException(
+                    "Complete the current token before serving the next one");
+        }
 
         Token token = tokenRepository
                 .findFirstByQueueIdAndStatusOrderByPositionAsc(
                         queueId, TokenStatus.WAITING)
                 .orElseThrow(() ->
-                        new RuntimeException("Queue is empty"));
+                        new BadRequestException("Queue is empty"));
 
         token.setStatus(TokenStatus.SERVING);
         token.setServingStartedAt(LocalDateTime.now());
 
         tokenRepository.save(token);
-
         return convertToResponse(token);
     }
 
     @Override
     @Transactional
     public TokenResponse completeToken(Long tokenId) {
-
         Token token = getOwnedToken(tokenId);
 
         if (token.getStatus() != TokenStatus.SERVING) {
-            throw new RuntimeException("Token is not being served");
+            throw new BadRequestException(
+                    "Token is not being served");
         }
 
         token.setStatus(TokenStatus.SERVED);
         token.setCompletedAt(LocalDateTime.now());
 
         tokenRepository.save(token);
-
         return convertToResponse(token);
     }
 
     @Override
     @Transactional
     public TokenResponse cancelToken(Long tokenId) {
-
         Token token = getOwnedToken(tokenId);
 
         if (token.getStatus() != TokenStatus.WAITING) {
-            throw new RuntimeException(
+            throw new BadRequestException(
                     "Only waiting tokens can be cancelled");
         }
 

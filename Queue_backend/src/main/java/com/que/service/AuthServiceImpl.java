@@ -1,9 +1,11 @@
+
 package com.que.service;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.que.dto.*;
+import com.que.exception.BadRequestException;
 import com.que.model.Manager;
 import com.que.repository.ManagerRepository;
 import com.que.security.JwtUtil;
@@ -22,11 +24,10 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse register(RegisterRequest request) {
 
         if (managerRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already registered");
+            throw new BadRequestException("Email already registered");
         }
 
         Manager manager = new Manager();
-
         manager.setName(request.getName());
         manager.setEmail(request.getEmail());
         manager.setPassword(
@@ -48,11 +49,11 @@ public class AuthServiceImpl implements AuthService {
 
         Manager manager = managerRepository.findByEmail(request.getEmail())
                 .orElseThrow(() ->
-                        new RuntimeException("Invalid email or password"));
+                        new BadRequestException("Invalid email or password"));
 
         if (!passwordEncoder.matches(
                 request.getPassword(), manager.getPassword())) {
-            throw new RuntimeException("Invalid email or password");
+            throw new BadRequestException("Invalid email or password");
         }
 
         String token = jwtUtil.generateToken(manager.getEmail());
