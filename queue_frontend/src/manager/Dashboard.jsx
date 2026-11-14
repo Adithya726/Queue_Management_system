@@ -29,8 +29,8 @@ import { PageSkeleton } from '../components/ui/Skeleton';
 import PageHeader from '../components/common/PageHeader';
 import ChartCard from '../components/common/ChartCard';
 import EmptyState from '../components/common/EmptyState';
-import { useToast } from '../components/ui/Toast';
-import { useAuth } from '../contextapi/AuthContext';
+import { useToast } from '../components/ui/useToast';
+import { useAuth } from '../contextapi/useAuth';
 import { loadQueueOverview } from '../services/overviewService';
 import { serveNextToken } from '../services/tokenService';
 import { getErrorMessage } from '../services/api';
@@ -47,24 +47,33 @@ function Dashboard() {
   const [busyQueueId, setBusyQueueId] = useState(null);
   const [error, setError] = useState('');
 
-  const load = useCallback(async (silent = false) => {
-    if (silent) {
-      setRefreshing(true);
-    }
-    try {
-      setQueues(await loadQueueOverview());
-      setError('');
-    } catch (err) {
-      setError(getErrorMessage(err, 'Unable to load dashboard data.'));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const load = useCallback(
+    () =>
+      loadQueueOverview()
+        .then((data) => {
+          setQueues(data);
+          setError('');
+        })
+        .catch((err) => setError(getErrorMessage(err, 'Unable to load dashboard data.')))
+        .finally(() => {
+          setLoading(false);
+          setRefreshing(false);
+        }),
+    []
+  );
+
+  const refresh = useCallback(() => {
+    setRefreshing(true);
+    return load();
+  }, [load]);
 
   useEffect(() => {
     load();
-    const timer = setInterval(() => load(true), REFRESH_MS);
+    const timer = setInterval(() => {
+      if (!document.hidden) {
+        load();
+      }
+    }, REFRESH_MS);
     return () => clearInterval(timer);
   }, [load]);
 
@@ -73,7 +82,7 @@ function Dashboard() {
     try {
       const { data } = await serveNextToken(queue.id);
       toast.success(`Now serving ${ticket(data.tokenNumber)} · ${data.personName}`);
-      await load(true);
+      await refresh();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Unable to serve the next token.'));
     } finally {
@@ -85,9 +94,11 @@ function Dashboard() {
     const waiting = queues.reduce((sum, q) => sum + q.waitingCount, 0);
     const serving = queues.filter((q) => q.serving).length;
     const served = queues.reduce((sum, q) => sum + q.servedCount, 0);
-    const withWait = queues.filter((q) => q.averageWaitTime > 0);
-    const avgWait = withWait.length
-      ? withWait.reduce((sum, q) => sum + q.averageWaitTime, 0) / withWait.length
+    // Weighted by how many people each queue has called, so a queue with one
+    // token does not count as much as a queue with a hundred.
+    const samples = queues.reduce((sum, q) => sum + q.waitSampleCount, 0);
+    const avgWait = samples
+      ? queues.reduce((sum, q) => sum + q.averageWaitTime * q.waitSampleCount, 0) / samples
       : 0;
     return { waiting, serving, served, avgWait };
   }, [queues]);
@@ -128,7 +139,7 @@ function Dashboard() {
         }
         actions={
           <>
-            <Button variant="secondary" onClick={() => load(true)} disabled={refreshing}>
+            <Button variant="secondary" onClick={refresh} disabled={refreshing}>
               <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
               {refreshing ? 'Refreshing' : 'Refresh'}
             </Button>
@@ -315,7 +326,7 @@ function Dashboard() {
 
           <ChartCard
             title="Waiting vs served"
-            subtitle="Today's workload for every queue"
+            subtitle="People waiting now and served in total, per queue"
             action={
               <Link to="/manager/analytics">
                 <Button variant="ghost" size="sm">

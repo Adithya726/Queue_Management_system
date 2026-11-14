@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { ChartColumn, LayoutDashboard, ListOrdered, LogOut } from 'lucide-react';
 import Brand from './Brand';
-import { useAuth } from '../../contextapi/AuthContext';
+import { useAuth } from '../../contextapi/useAuth';
 
 const LINKS = [
   { to: '/manager', label: 'Dashboard', icon: LayoutDashboard, end: true },

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChartColumn, ListOrdered, Zap } from 'lucide-react';
 import Navbar from '../components/ui/Navbar';
 import Button from '../components/ui/Button';
-import { useAuth } from '../contextapi/AuthContext';
+import { useAuth } from '../contextapi/useAuth';
 
 const FEATURES = [
   {

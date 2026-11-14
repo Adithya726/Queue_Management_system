@@ -52,7 +52,7 @@ function Analytics() {
   const [analytics, setAnalytics] = useState(null);
   const [servingCount, setServingCount] = useState(0);
   const [loadingQueues, setLoadingQueues] = useState(true);
-  const [loadingData, setLoadingData] = useState(false);
+  const [loadedQueueId, setLoadedQueueId] = useState('');
   const [error, setError] = useState('');
 
   const selectedQueueId = queueId || (queues[0] ? String(queues[0].id) : '');
@@ -71,29 +71,33 @@ function Analytics() {
     loadQueues();
   }, []);
 
-  const loadAnalytics = useCallback(async (id) => {
-    setLoadingData(true);
-    setError('');
-    try {
-      const [analyticsRes, tokensRes] = await Promise.all([
+  const loadAnalytics = useCallback(
+    (id) =>
+      Promise.all([
         getQueueAnalytics(id),
         getQueueTokens(id).catch(() => ({ data: [] })),
-      ]);
-      setAnalytics(analyticsRes.data);
-      setServingCount((tokensRes.data || []).filter((t) => t.status === 'SERVING').length);
-    } catch (err) {
-      setAnalytics(null);
-      setError(getErrorMessage(err, 'Unable to load analytics.'));
-    } finally {
-      setLoadingData(false);
-    }
-  }, []);
+      ])
+        .then(([analyticsRes, tokensRes]) => {
+          setAnalytics(analyticsRes.data);
+          setServingCount((tokensRes.data || []).filter((t) => t.status === 'SERVING').length);
+          setError('');
+        })
+        .catch((err) => {
+          setAnalytics(null);
+          setError(getErrorMessage(err, 'Unable to load analytics.'));
+        })
+        .finally(() => setLoadedQueueId(id)),
+    []
+  );
 
   useEffect(() => {
     if (selectedQueueId) {
       loadAnalytics(selectedQueueId);
     }
   }, [selectedQueueId, loadAnalytics]);
+
+  // Loading while the selected queue's data has not arrived yet.
+  const loadingData = Boolean(selectedQueueId) && loadedQueueId !== selectedQueueId;
 
   const metrics = useMemo(() => {
     if (!analytics) {
@@ -103,7 +107,7 @@ function Analytics() {
     const cancelled = analytics.totalCancelled || 0;
     const waiting = analytics.currentQueueLength || 0;
     const total = served + cancelled + waiting + servingCount;
-    const peak = Math.max(0, ...(analytics.queueLengthTrend || []).map((p) => p.queueLength));
+    const peak = analytics.peakQueueLength || 0;
     return {
       served,
       cancelled,

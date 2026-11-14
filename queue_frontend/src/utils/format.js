@@ -64,19 +64,25 @@ export function startedLabel(isoDate) {
   return `Serving for ${hours}h ${remaining}m`;
 }
 
-export function chartPoints(trend = []) {
-  return trend.map((point) => ({
-    time: formatTrendTime(point.time),
-    queueLength: point.queueLength,
-  }));
+function dayKey(time) {
+  const date = new Date(time);
+  return Number.isNaN(date.getTime()) ? '' : date.toDateString();
 }
 
-export function formatClock(time) {
-  const date = new Date(time);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+/**
+ * Shapes the trend for the chart. When the data covers more than one day the
+ * label includes the date, so 10:00 on Monday and 10:00 on Tuesday stay apart.
+ */
+export function chartPoints(trend = []) {
+  const multiDay = new Set(trend.map((point) => dayKey(point.time))).size > 1;
+  return trend.map((point) => {
+    const date = new Date(point.time);
+    const label =
+      multiDay && !Number.isNaN(date.getTime())
+        ? `${date.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${formatTrendTime(point.time)}`
+        : formatTrendTime(point.time);
+    return { time: label, queueLength: point.queueLength };
+  });
 }
 
 export function formatDate(time) {

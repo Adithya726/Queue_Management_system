@@ -1,6 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import Brand from '../common/Brand';
-import { useAuth } from '../../contextapi/AuthContext';
+import { useAuth } from '../../contextapi/useAuth';
 
 function Navbar() {
   const { isAuthenticated } = useAuth();

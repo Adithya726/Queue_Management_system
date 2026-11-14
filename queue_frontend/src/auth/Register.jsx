@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Brand from '../components/common/Brand';
-import { useAuth } from '../contextapi/AuthContext';
+import { useAuth } from '../contextapi/useAuth';
 import { getErrorMessage } from '../services/api';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

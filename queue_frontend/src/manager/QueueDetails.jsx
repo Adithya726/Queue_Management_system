@@ -14,12 +14,12 @@ import {
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import { PageSkeleton } from '../components/ui/Skeleton';
-import { useToast } from '../components/ui/Toast';
+import { useToast } from '../components/ui/useToast';
 import PageHeader from '../components/common/PageHeader';
 import EmptyState from '../components/common/EmptyState';
 import AddPerson from '../queue/AddPerson';
 import WaitingList from '../queue/WaitingList';
-import { getMyQueues } from '../services/queueService';
+import { getQueue } from '../services/queueService';
 import { getQueueAnalytics } from '../services/analyticsService';
 import {
   cancelToken,
@@ -42,47 +42,46 @@ function QueueDetails() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmToken, setConfirmToken] = useState(null);
-  const [, setTick] = useState(0);
 
-  const loadQueueData = useCallback(async () => {
-    try {
-      const queuesResponse = await getMyQueues();
-      const currentQueue = (queuesResponse.data || []).find(
-        (item) => String(item.id) === String(queueId)
-      );
-
-      if (!currentQueue) {
-        setQueue(null);
-        return;
-      }
-
-      const [tokensResponse, analyticsResponse] = await Promise.all([
+  const loadQueueData = useCallback(
+    () =>
+      Promise.all([
+        getQueue(queueId),
         getQueueTokens(queueId),
         getQueueAnalytics(queueId).catch(() => null),
-      ]);
-
-      const { waiting, serving } = splitQueueTokens(tokensResponse.data || []);
-      setQueue(currentQueue);
-      setTokens(waiting);
-      setServingToken(serving);
-      setStats(analyticsResponse?.data || {});
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Unable to load this queue.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [queueId, toast]);
+      ])
+        .then(([queueResponse, tokensResponse, analyticsResponse]) => {
+          const { waiting, serving } = splitQueueTokens(tokensResponse.data || []);
+          setQueue(queueResponse.data);
+          setTokens(waiting);
+          setServingToken(serving);
+          setStats(analyticsResponse?.data || {});
+        })
+        .catch((err) => {
+          if (err.response?.status === 404) {
+            setQueue(null);
+          } else {
+            toast.error(getErrorMessage(err, 'Unable to load this queue.'));
+          }
+        })
+        .finally(() => setLoading(false)),
+    [queueId, toast]
+  );
 
   useEffect(() => {
-    setLoading(true);
     loadQueueData();
   }, [loadQueueData]);
 
-  // Re-render every 15s so "waiting X min" / "serving for X min" labels stay fresh.
+  // Reload every 15s so the list stays current if another device changes this
+  // queue, and so the "waiting X min" / "serving for X min" labels stay fresh.
   useEffect(() => {
-    const timer = setInterval(() => setTick((value) => value + 1), 15000);
+    const timer = setInterval(() => {
+      if (!document.hidden) {
+        loadQueueData();
+      }
+    }, 15000);
     return () => clearInterval(timer);
-  }, []);
+  }, [loadQueueData]);
 
   const runAction = async (action, successMessage, fallbackError) => {
     if (busy) {

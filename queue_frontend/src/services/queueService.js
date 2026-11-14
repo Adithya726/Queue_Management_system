@@ -7,3 +7,7 @@ export function createQueue(payload) {
 export function getMyQueues() {
   return api.get('/api/queues');
 }
+
+export function getQueue(queueId) {
+  return api.get(`/api/queues/${queueId}`);
+}

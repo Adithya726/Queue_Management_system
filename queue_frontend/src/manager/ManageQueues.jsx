@@ -14,16 +14,17 @@ function ManageQueues() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
 
-  const loadQueues = useCallback(async () => {
-    try {
-      setQueues(await loadQueueOverview());
-      setError('');
-    } catch (err) {
-      setError(getErrorMessage(err, 'Unable to load queues.'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadQueues = useCallback(
+    () =>
+      loadQueueOverview()
+        .then((data) => {
+          setQueues(data);
+          setError('');
+        })
+        .catch((err) => setError(getErrorMessage(err, 'Unable to load queues.')))
+        .finally(() => setLoading(false)),
+    []
+  );
 
   useEffect(() => {
     loadQueues();

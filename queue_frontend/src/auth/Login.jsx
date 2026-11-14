@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Brand from '../components/common/Brand';
-import { useAuth } from '../contextapi/AuthContext';
+import { useAuth } from '../contextapi/useAuth';
 import { getErrorMessage } from '../services/api';
 
 function Login() {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import Button from '../components/ui/Button';
-import { useToast } from '../components/ui/Toast';
+import { useToast } from '../components/ui/useToast';
 import { createQueue } from '../services/queueService';
 import { getErrorMessage } from '../services/api';
 
