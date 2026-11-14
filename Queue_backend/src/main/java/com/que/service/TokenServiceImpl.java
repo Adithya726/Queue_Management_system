@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.que.dto.TokenRequest;
@@ -59,6 +60,15 @@ public class TokenServiceImpl implements TokenService {
                         new ResourceNotFoundException("Token not found"));
     }
 
+    /*
+     * Token writes run at READ_COMMITTED. MySQL/MariaDB default to
+     * REPEATABLE READ, where a transaction keeps the snapshot from its first
+     * read: a request that waited on the queue lock would then read the
+     * tokens as they were before the other request committed and serve the
+     * same person or reuse a token number. READ_COMMITTED makes every read
+     * after the lock see the latest committed rows.
+     */
+
     private TokenResponse convertToResponse(Token token) {
         return new TokenResponse(
                 token.getId(),
@@ -73,7 +83,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public TokenResponse addToken(Long queueId, TokenRequest request) {
         Queue queue = lockOwnedQueue(queueId);
 
@@ -108,7 +118,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public TokenResponse moveToken(Long tokenId, String direction) {
         int step;
         if ("UP".equalsIgnoreCase(direction)) {
@@ -156,7 +166,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public TokenResponse serveNext(Long queueId) {
         lockOwnedQueue(queueId);
 
@@ -179,7 +189,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public TokenResponse completeToken(Long tokenId) {
         Token token = lockOwnedToken(tokenId);
 
@@ -195,7 +205,7 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public TokenResponse cancelToken(Long tokenId) {
         Token token = lockOwnedToken(tokenId);
 

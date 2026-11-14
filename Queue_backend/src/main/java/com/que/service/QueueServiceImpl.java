@@ -120,6 +120,16 @@ public class QueueServiceImpl implements QueueService {
                 }
             }
 
+            double totalService = 0;
+            int serviceCount = 0;
+            for (Token t : tokens) {
+                Double service = AnalyticsMath.serviceMinutes(t);
+                if (service != null) {
+                    totalService += service;
+                    serviceCount++;
+                }
+            }
+
             return new QueueOverviewResponse(
                     queue.getId(),
                     queue.getName(),
@@ -130,7 +140,8 @@ public class QueueServiceImpl implements QueueService {
                     served,
                     cancelled,
                     waitCount == 0 ? 0 : totalWait / waitCount,
-                    waitCount);
+                    waitCount,
+                    serviceCount == 0 ? 0 : totalService / serviceCount);
         }).toList();
     }
 }

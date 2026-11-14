@@ -9,7 +9,6 @@ import com.que.dto.AnalyticsResponse;
 import com.que.dto.TrendPoint;
 import com.que.exception.ResourceNotFoundException;
 import com.que.model.Token;
-import com.que.model.TokenStatus;
 import com.que.repository.QueueRepository;
 import com.que.repository.TokenRepository;
 
@@ -59,11 +58,9 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 waitCount++;
             }
 
-            if (token.getStatus() == TokenStatus.SERVED
-                    && token.getServingStartedAt() != null
-                    && token.getCompletedAt() != null) {
-                totalService += AnalyticsMath.minutesBetween(
-                        token.getServingStartedAt(), token.getCompletedAt());
+            Double service = AnalyticsMath.serviceMinutes(token);
+            if (service != null) {
+                totalService += service;
                 serviceCount++;
             }
         }

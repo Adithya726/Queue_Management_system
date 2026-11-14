@@ -8,6 +8,7 @@ import java.util.List;
 
 import com.que.dto.TrendPoint;
 import com.que.model.Token;
+import com.que.model.TokenStatus;
 
 /** Pure calculations over a queue's tokens, kept separate so they are easy to test. */
 final class AnalyticsMath {
@@ -25,6 +26,16 @@ final class AnalyticsMath {
             return null;
         }
         return minutesBetween(token.getCreatedAt(), token.getServingStartedAt());
+    }
+
+    /** Service = called to completed. Null for tokens that were not fully served. */
+    static Double serviceMinutes(Token token) {
+        if (token.getStatus() != TokenStatus.SERVED
+                || token.getServingStartedAt() == null
+                || token.getCompletedAt() == null) {
+            return null;
+        }
+        return minutesBetween(token.getServingStartedAt(), token.getCompletedAt());
     }
 
     /**

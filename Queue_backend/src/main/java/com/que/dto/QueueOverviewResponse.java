@@ -23,4 +23,6 @@ public class QueueOverviewResponse {
 
     private Double averageWaitTime;
     private Integer waitSampleCount;
+
+    private Double averageServiceTime;
 }

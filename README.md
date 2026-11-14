@@ -70,6 +70,14 @@ cd Queue_backend
 - **Unit tests** for the queue rules: token numbering, move up/down and its edges, serve-next, complete, cancel and re-numbering, ownership (`TokenServiceImplTest`), the analytics maths (`AnalyticsMathTest`), registration and login (`AuthServiceImplTest`) and JWT signing (`JwtUtilTest`).
 - **Integration tests** (`QueueFlowIntegrationTest`) run the real services and SQL: the full counter flow, one manager unable to see another's queue, 10 simultaneous adds that never repeat a token number, and 5 simultaneous serve-next clicks that call exactly one person.
 
+H2 runs at READ COMMITTED, while MySQL defaults to REPEATABLE READ, so the concurrency tests are worth running against a real MySQL database as well (it needs an empty schema, which the tests create and drop):
+```bash
+./mvnw test -Dtest=QueueFlowIntegrationTest \
+  -Dspring.datasource.url=jdbc:mysql://localhost:3306/queue_it \
+  -Dspring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver \
+  -Dspring.datasource.username=root -Dspring.datasource.password=root
+```
+
 ## API
 
 All endpoints except `/api/auth/**` need `Authorization: Bearer <token>`.
@@ -113,7 +121,7 @@ All endpoints except `/api/auth/**` need `Authorization: Bearer <token>`.
 - **Token states:** `WAITING → SERVING → SERVED`, or `WAITING → CANCELLED`. Only one token per queue can be SERVING at a time.
 - **Wait time** = `servingStartedAt − createdAt`; **service time** = `completedAt − servingStartedAt`.
 - **Queue-length trend** replays every join (+1) and leave (−1) event in time order.
-- **Concurrency:** every change to a queue's tokens (add, move, serve, complete, cancel) first locks that queue's row with `SELECT ... FOR UPDATE`, so two clicks on the same queue run one after the other. A unique key on `(queue_id, token_number)` backs this up at the database level.
+- **Concurrency:** every change to a queue's tokens (add, move, serve, complete, cancel) first locks that queue's row with `SELECT ... FOR UPDATE`, so two clicks on the same queue run one after the other. These writes run at READ COMMITTED: under MySQL's default REPEATABLE READ, a request that waited on the lock would still read the tokens from its older snapshot and could serve the same person twice. A unique key on `(queue_id, token_number)` backs this up at the database level.
 - **Token numbers** are `max(token_number) + 1` per queue and are never reused, even after cancellations.
 - **Peak queue length** is computed on the server over the queue's full history.
 - **Data isolation:** every queue, token and analytics request checks that the queue belongs to the logged-in manager. Another manager's queue returns 404, not 403, so its existence is not revealed.
