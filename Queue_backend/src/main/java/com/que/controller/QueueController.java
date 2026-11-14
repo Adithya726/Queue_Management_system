@@ -8,7 +8,9 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-import com.que.dto.*;
+import com.que.dto.QueueOverviewResponse;
+import com.que.dto.QueueRequest;
+import com.que.dto.QueueResponse;
 import com.que.service.QueueService;
 
 @RestController
@@ -22,14 +24,24 @@ public class QueueController {
     public ResponseEntity<QueueResponse> createQueue(
             @Valid @RequestBody QueueRequest request) {
 
-        return ResponseEntity.ok(
-                queueService.createQueue(request));
+        return ResponseEntity.ok(queueService.createQueue(request));
     }
 
     @GetMapping
     public ResponseEntity<List<QueueResponse>> getMyQueues() {
 
-        return ResponseEntity.ok(
-                queueService.getMyQueues());
+        return ResponseEntity.ok(queueService.getMyQueues());
+    }
+
+    @GetMapping("/overview")
+    public ResponseEntity<List<QueueOverviewResponse>> getOverview() {
+
+        return ResponseEntity.ok(queueService.getOverview());
+    }
+
+    @GetMapping("/{queueId}")
+    public ResponseEntity<QueueResponse> getQueue(@PathVariable Long queueId) {
+
+        return ResponseEntity.ok(queueService.getQueue(queueId));
     }
 }

@@ -2,12 +2,21 @@
 package com.que.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "tokens")
-@Data
+@Table(
+        name = "tokens",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_token_queue_number",
+                columnNames = {"queue_id", "token_number"}),
+        indexes = @Index(
+                name = "idx_token_queue_status_position",
+                columnList = "queue_id, status, position"))
+@Getter
+@Setter
 public class Token {
 
     @Id
@@ -17,7 +26,7 @@ public class Token {
     @Column(name = "token_number", nullable = false)
     private Integer tokenNumber;
 
-    @Column(name = "person_name", nullable = false)
+    @Column(name = "person_name", nullable = false, length = 100)
     private String personName;
 
     @Enumerated(EnumType.STRING)

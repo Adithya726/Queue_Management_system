@@ -2,12 +2,14 @@
 package com.que.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "manager")
-@Data
+@Getter
+@Setter
 public class Manager {
 
     @Id

@@ -1,8 +1,11 @@
 
 package com.que.service;
 
+import java.util.Locale;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.que.dto.*;
 import com.que.exception.BadRequestException;
@@ -20,16 +23,24 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
+    /** Emails are stored trimmed and lowercase so "A@x.com" and "a@x.com" are one account. */
+    static String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+    }
+
     @Override
+    @Transactional
     public AuthResponse register(RegisterRequest request) {
 
-        if (managerRepository.existsByEmail(request.getEmail())) {
+        String email = normalizeEmail(request.getEmail());
+
+        if (managerRepository.existsByEmail(email)) {
             throw new BadRequestException("Email already registered");
         }
 
         Manager manager = new Manager();
-        manager.setName(request.getName());
-        manager.setEmail(request.getEmail());
+        manager.setName(request.getName().trim());
+        manager.setEmail(email);
         manager.setPassword(
                 passwordEncoder.encode(request.getPassword()));
 
@@ -45,9 +56,10 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
 
-        Manager manager = managerRepository.findByEmail(request.getEmail())
+        Manager manager = managerRepository.findByEmail(normalizeEmail(request.getEmail()))
                 .orElseThrow(() ->
                         new BadRequestException("Invalid email or password"));
 
